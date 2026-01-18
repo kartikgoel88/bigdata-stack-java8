@@ -1,0 +1,70 @@
+# Use the base image
+ARG BASE_IMAGE=bigdata-stack-base:latest
+FROM ${BASE_IMAGE}
+
+# Set environment variables
+ENV SPARK_VERSION=3.5.8
+ENV SPARK_HOME=/opt/spark
+ENV SPARK_CONF_DIR=$SPARK_HOME/conf
+ENV PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin
+ENV PYSPARK_PYTHON=python3
+ENV PYSPARK_DRIVER_PYTHON=python3
+
+WORKDIR /opt
+
+# Copy downloads directory into image (for local files during build)
+COPY downloads /downloads
+RUN mkdir -p /downloads || true
+
+# Install Spark from local downloads folder (.tar extension)
+RUN set -e && \
+    SPARK_FILE_BASE=spark-${SPARK_VERSION}-bin-hadoop3 && \
+    SPARK_FILE_TAR=${SPARK_FILE_BASE}.tar && \
+    LOCAL_DOWNLOADS=/downloads && \
+    if [ -f "${LOCAL_DOWNLOADS}/${SPARK_FILE_TAR}" ]; then \
+        echo "Using local file: ${LOCAL_DOWNLOADS}/${SPARK_FILE_TAR}"; \
+        cp ${LOCAL_DOWNLOADS}/${SPARK_FILE_TAR} ./; \
+        tar -xf ${SPARK_FILE_TAR} -C /opt && \
+        mv /opt/${SPARK_FILE_BASE} $SPARK_HOME && \
+        rm ${SPARK_FILE_TAR}; \
+    else \
+        echo "ERROR: Spark file not found in downloads folder: ${LOCAL_DOWNLOADS}/${SPARK_FILE_TAR}"; \
+        echo "Please download spark-${SPARK_VERSION}-bin-hadoop3.tar to the downloads/ folder"; \
+        exit 1; \
+    fi
+
+# Commented out wget - using local downloads instead
+# RUN wget https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop3.tgz && \
+#     tar -xzf spark-${SPARK_VERSION}-bin-hadoop3.tgz -C /opt && \
+#     mv /opt/spark-${SPARK_VERSION}-bin-hadoop3 $SPARK_HOME && \
+#     rm spark-${SPARK_VERSION}-bin-hadoop3.tgz
+
+# Install PySpark
+RUN pip3 install --no-cache-dir pyspark==${SPARK_VERSION}
+
+# Create necessary directories
+RUN mkdir -p /opt/spark/work && \
+    mkdir -p /opt/spark/logs && \
+    chmod -R 755 /opt/spark
+
+# Copy configuration files
+COPY config/spark/* $SPARK_CONF_DIR/
+
+# Create log4j.properties if not provided (fallback)
+RUN if [ ! -f "$SPARK_CONF_DIR/log4j.properties" ]; then \
+        cp $SPARK_HOME/conf/log4j.properties.template $SPARK_CONF_DIR/log4j.properties 2>/dev/null || \
+        (echo "log4j.rootCategory=WARN, console" > $SPARK_CONF_DIR/log4j.properties && \
+        echo "log4j.appender.console=org.apache.log4j.ConsoleAppender" >> $SPARK_CONF_DIR/log4j.properties && \
+        echo "log4j.appender.console.target=System.err" >> $SPARK_CONF_DIR/log4j.properties && \
+        echo "log4j.appender.console.layout=org.apache.log4j.PatternLayout" >> $SPARK_CONF_DIR/log4j.properties && \
+        echo "log4j.appender.console.layout.ConversionPattern=%d{yy/MM/dd HH:mm:ss} %p %c{1}: %m%n" >> $SPARK_CONF_DIR/log4j.properties && \
+        echo "log4j.logger.org.apache.spark.repl.Main=WARN" >> $SPARK_CONF_DIR/log4j.properties && \
+        echo "log4j.logger.org.apache.spark.SparkContext=WARN" >> $SPARK_CONF_DIR/log4j.properties); \
+    fi
+
+WORKDIR /opt
+
+EXPOSE 7077 8080 8081 4040
+
+CMD ["/bin/bash"]
+

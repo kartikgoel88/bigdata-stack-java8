@@ -1,0 +1,188 @@
+services:
+  # Build base image first
+  base:
+    build:
+      context: .
+      dockerfile: Dockerfile.base
+    image: bigdata-stack-base:latest
+
+  namenode:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.hadoop
+      args:
+        BASE_IMAGE: bigdata-stack-base:latest
+    depends_on:
+      - base
+    container_name: hadoop-namenode
+    hostname: namenode
+    ports:
+      - "9870:9870"  # NameNode Web UI
+      - "9000:9000"  # NameNode RPC
+    volumes:
+      - namenode-data:/opt/hadoop/data/namenode
+      - hadoop-tmp:/opt/hadoop/data/tmp
+    environment:
+      - CLUSTER_NAME=hadoop-cluster
+      - TZ=UTC
+    command: namenode
+    networks:
+      - hadoop-network
+
+  datanode:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.hadoop
+      args:
+        BASE_IMAGE: bigdata-stack-base:latest
+    depends_on:
+      - base
+      - namenode
+    container_name: hadoop-datanode
+    hostname: datanode
+    ports:
+      - "9864:9864"  # DataNode Web UI
+    volumes:
+      - datanode-data:/opt/hadoop/data/datanode
+      - hadoop-tmp:/opt/hadoop/data/tmp
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - TZ=UTC
+    command: datanode
+    networks:
+      - hadoop-network
+
+  resourcemanager:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.hadoop
+      args:
+        BASE_IMAGE: bigdata-stack-base:latest
+    depends_on:
+      - base
+      - namenode
+      - datanode
+    container_name: hadoop-resourcemanager
+    hostname: resourcemanager
+    ports:
+      - "8088:8088"  # ResourceManager Web UI
+    environment:
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+      - YARN_CONF_yarn_resourcemanager_address=resourcemanager:8032
+      - TZ=UTC
+    command: resourcemanager
+    networks:
+      - hadoop-network
+
+  nodemanager:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.hadoop
+      args:
+        BASE_IMAGE: bigdata-stack-base:latest
+    depends_on:
+      - base
+      - namenode
+      - datanode
+      - resourcemanager
+    container_name: hadoop-nodemanager
+    hostname: nodemanager
+    environment:
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+      - TZ=UTC
+    command: nodemanager
+    networks:
+      - hadoop-network
+
+  postgres:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.postgres
+    image: bigdata-postgres:latest
+    container_name: hive-postgres
+    hostname: postgres
+    environment:
+      - POSTGRES_USER=hive
+      - POSTGRES_PASSWORD=hive
+      - POSTGRES_DB=metastore
+      - TZ=UTC
+      - PGTZ=UTC
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./config/postgres/init-postgres.sh:/docker-entrypoint-initdb.d/init-postgres.sh
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hive -d metastore"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hadoop-network
+
+  hive-metastore:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.hadoop
+      args:
+        BASE_IMAGE: bigdata-stack-base:latest
+    depends_on:
+      base:
+        condition: service_started
+      namenode:
+        condition: service_started
+      datanode:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    container_name: hive-metastore
+    hostname: hive-metastore
+    ports:
+      - "9083:9083"  # Hive Metastore Thrift
+    environment:
+      - SERVICE_NAME=metastore
+      - TZ=UTC
+    command: metastore
+    networks:
+      - hadoop-network
+
+  hive-server:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.hadoop
+      args:
+        BASE_IMAGE: bigdata-stack-base:latest
+    depends_on:
+      - base
+      - namenode
+      - datanode
+      - hive-metastore
+    container_name: hive-server
+    hostname: hive-server
+    ports:
+      - "10000:10000"  # HiveServer2
+    environment:
+      - SERVICE_NAME=hiveserver2
+      - HADOOP_HOME=/opt/hadoop
+      - HIVE_HOME=/opt/hive
+      - TZ=UTC
+    command: hiveserver2
+    healthcheck:
+      test: ["CMD-SHELL", "netstat -tuln | grep -q ':10000' || ss -tuln | grep -q ':10000'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      - hadoop-network
+
+volumes:
+  namenode-data:
+  datanode-data:
+  hadoop-tmp:
+  postgres-data:
+
+networks:
+  hadoop-network:
+    name: bigdata-hadoop-network
+    driver: bridge

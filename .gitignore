@@ -1,0 +1,12 @@
+# Docker volumes
+*.log
+
+# IDE
+.idea/
+.vscode/
+downloads/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db

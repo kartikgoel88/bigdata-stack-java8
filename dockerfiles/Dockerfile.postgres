@@ -1,0 +1,16 @@
+FROM postgres:13
+
+# Install network utilities
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    netcat-openbsd \
+    iputils-ping \
+    dnsutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set timezone
+ENV TZ=UTC
+ENV PGTZ=UTC
+
+# Keep the default postgres entrypoint
+# The postgres image will handle initialization automatically
+
