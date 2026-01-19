@@ -65,7 +65,8 @@ echo ""
 
 # Step 4: Build all service images
 print_info "Step 4: Building all service images..."
-docker-compose build --no-cache
+docker-compose build 
+#--no-cache
 if [ $? -eq 0 ]; then
     print_info "All service images built successfully"
 else
@@ -139,6 +140,54 @@ for i in {1..60}; do
 done
 echo ""
 
+# Wait for Spark Master
+print_info "Waiting for Spark Master..."
+for i in {1..30}; do
+    if docker-compose exec -T spark-master nc -z localhost 7077 > /dev/null 2>&1; then
+        print_info "Spark Master is ready"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        print_warn "Spark Master may not be ready yet"
+    else
+        echo -n "."
+        sleep 2
+    fi
+done
+echo ""
+
+# Wait for Spark Worker
+print_info "Waiting for Spark Worker..."
+for i in {1..30}; do
+    if docker-compose exec -T spark-worker nc -z localhost 8081 > /dev/null 2>&1; then
+        print_info "Spark Worker is ready"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        print_warn "Spark Worker may not be ready yet"
+    else
+        echo -n "."
+        sleep 2
+    fi
+done
+echo ""
+
+# Wait for Spark History Server
+print_info "Waiting for Spark History Server..."
+for i in {1..30}; do
+    if docker-compose exec -T spark-history-server nc -z localhost 18080 > /dev/null 2>&1; then
+        print_info "Spark History Server is ready"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        print_warn "Spark History Server may not be ready yet"
+    else
+        echo -n "."
+        sleep 2
+    fi
+done
+echo ""
+
 # Step 7: Show service status
 echo ""
 print_info "Step 7: Service Status"
@@ -147,6 +196,15 @@ docker-compose ps
 
 echo ""
 print_info "Startup complete!"
+echo ""
+print_info "Service URLs:"
+echo "  - HDFS NameNode Web UI: http://localhost:9870"
+echo "  - YARN ResourceManager: http://localhost:8088"
+echo "  - HiveServer2: localhost:10000"
+echo "  - Spark Master Web UI: http://localhost:8080"
+echo "  - Spark Worker Web UI: http://localhost:8081"
+echo "  - Spark History Server: http://localhost:18080"
+echo ""
 print_info "To view logs: docker-compose logs -f [service-name]"
 print_info "To validate connections: ./validate-connections.sh"
 echo ""

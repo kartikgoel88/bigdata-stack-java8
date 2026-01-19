@@ -176,11 +176,91 @@ services:
     networks:
       - hadoop-network
 
+  spark-master:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.spark
+      args:
+        BASE_IMAGE: bigdata-stack-base:latest
+    depends_on:
+      - base
+      - namenode
+      - datanode
+      - hive-metastore
+    container_name: spark-master
+    hostname: spark-master
+    ports:
+      - "7077:7077"  # Spark Master
+      - "8080:8080"  # Spark Master Web UI
+    environment:
+      - SPARK_MASTER_PORT=7077
+      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+      - TZ=UTC
+    volumes:
+      - spark-work:/opt/spark/work
+      - spark-logs:/opt/spark/logs
+    command: bash -c "/opt/spark/sbin/start-master.sh && sleep 2 && tail -f /opt/spark/logs/spark-*-org.apache.spark.deploy.master.Master-*.out 2>/dev/null || tail -f /dev/null"
+    networks:
+      - hadoop-network
+
+  spark-worker:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.spark
+      args:
+        BASE_IMAGE: bigdata-stack-base:latest
+    depends_on:
+      - base
+      - namenode
+      - datanode
+      - hive-metastore
+      - spark-master
+    container_name: spark-worker
+    hostname: spark-worker
+    ports:
+      - "8081:8081"  # Spark Worker Web UI
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2g
+      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+      - TZ=UTC
+    volumes:
+      - spark-work:/opt/spark/work
+      - spark-logs:/opt/spark/logs
+    command: bash -c "/opt/spark/sbin/start-worker.sh spark://spark-master:7077 && sleep 2 && tail -f /opt/spark/logs/spark-*-org.apache.spark.deploy.worker.Worker-*.out 2>/dev/null || tail -f /dev/null"
+    networks:
+      - hadoop-network
+
+  spark-history-server:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.spark
+      args:
+        BASE_IMAGE: bigdata-stack-base:latest
+    depends_on:
+      - base
+      - namenode
+      - datanode
+      - hive-metastore
+    container_name: spark-history-server
+    hostname: spark-history-server
+    ports:
+      - "18080:18080"  # Spark History Server Web UI
+    environment:
+      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+      - TZ=UTC
+    command: bash -c "/opt/spark/sbin/start-history-server.sh && sleep 2 && tail -f /opt/spark/logs/spark-*-org.apache.spark.deploy.history.HistoryServer-*.out 2>/dev/null || tail -f /dev/null"
+    networks:
+      - hadoop-network
+
 volumes:
   namenode-data:
   datanode-data:
   hadoop-tmp:
   postgres-data:
+  spark-work:
+  spark-logs:
 
 networks:
   hadoop-network:

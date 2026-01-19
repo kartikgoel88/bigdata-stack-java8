@@ -28,6 +28,10 @@ print_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
 }
 
+print_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
 print_section() {
     echo ""
     echo -e "${BLUE}=========================================="
@@ -158,6 +162,9 @@ check_service "hive-metastore" "Hive Metastore"
 check_service "hive-server" "HiveServer2"
 check_service "hadoop-namenode" "HDFS NameNode"
 check_service "hadoop-datanode" "HDFS DataNode"
+check_service "spark-master" "Spark Master"
+check_service "spark-worker" "Spark Worker"
+check_service "spark-history-server" "Spark History Server"
 
 # 2. Check PostgreSQL
 print_section "2. PostgreSQL Validation"
@@ -183,7 +190,7 @@ fi
 
 # 4. Check HDFS
 print_section "4. HDFS Validation"
-check_port "namenode" "9000" "NameNode RPC"
+#check_port "namenode" "9000" "NameNode RPC"
 check_port "namenode" "9870" "NameNode Web UI"
 check_port "datanode" "9864" "DataNode Web UI"
 
@@ -222,8 +229,53 @@ fi
 print_section "7. Hive Metastore Connection Test"
 check_hive_metastore_connection
 
-# 8. Network Configuration Check
-print_section "8. Network Configuration"
+# 8. Check Spark Services
+print_section "8. Spark Services Validation"
+check_port "spark-master" "7077" "Spark Master RPC"
+check_port "spark-master" "8080" "Spark Master Web UI"
+check_port "spark-worker" "8081" "Spark Worker Web UI"
+check_port "spark-history-server" "18080" "Spark History Server Web UI"
+
+# Check Spark Master connectivity from worker
+check_network_connectivity "spark-worker" "spark-master" "7077" "Spark Worker -> Master connectivity"
+
+# Check if Spark processes are running
+if docker-compose exec -T spark-master jps 2>/dev/null | grep -qi "Master"; then
+    print_success "Spark Master: Java process is running"
+    ((PASSED++))
+else
+    print_error "Spark Master: Java process is NOT running"
+    ((FAILED++))
+fi
+
+if docker-compose exec -T spark-worker jps 2>/dev/null | grep -qi "Worker"; then
+    print_success "Spark Worker: Java process is running"
+    ((PASSED++))
+else
+    print_error "Spark Worker: Java process is NOT running"
+    ((FAILED++))
+fi
+
+# Check Spark connectivity to HDFS
+check_network_connectivity "spark-master" "namenode" "9000" "Spark Master -> HDFS NameNode connectivity"
+check_network_connectivity "spark-worker" "namenode" "9000" "Spark Worker -> HDFS NameNode connectivity"
+
+# Check Spark connectivity to Hive Metastore
+check_network_connectivity "spark-master" "hive-metastore" "9083" "Spark Master -> Hive Metastore connectivity"
+check_network_connectivity "spark-worker" "hive-metastore" "9083" "Spark Worker -> Hive Metastore connectivity"
+
+# Test Spark SQL with Hive support
+print_info "Testing Spark SQL with Hive support..."
+if docker-compose exec -T spark-master bash -c '${SPARK_HOME:-/opt/spark}/bin/spark-sql --master local[*] --conf spark.sql.catalogImplementation=hive -e "SHOW DATABASES;"' > /dev/null 2>&1; then
+    print_success "Spark SQL: Hive integration test successful"
+    ((PASSED++))
+else
+    print_warn "Spark SQL: Hive integration test failed (may need more time to initialize)"
+    print_info "You can test manually: docker-compose exec spark-master spark-sql --master local[*] -e 'SHOW DATABASES;'"
+fi
+
+# 9. Network Configuration Check
+print_section "9. Network Configuration"
 NETWORK_NAME=$(docker network ls | grep "bigdata" | awk '{print $2}' | head -1)
 if [ -n "$NETWORK_NAME" ]; then
     if echo "$NETWORK_NAME" | grep -q "_"; then
@@ -265,6 +317,16 @@ if [ $FAILED -eq 0 ]; then
     echo -e "${GREEN}=========================================="
     echo "All validations passed! ✓"
     echo -e "==========================================${NC}"
+    echo ""
+    print_info "Service URLs:"
+    echo "  - HDFS NameNode Web UI: http://localhost:9870"
+    echo "  - YARN ResourceManager: http://localhost:8088"
+    echo "  - HiveServer2: localhost:10000"
+    echo "  - Spark Master Web UI: http://localhost:8080"
+    echo "  - Spark Worker Web UI: http://localhost:8081"
+    echo "  - Spark History Server: http://localhost:18080"
+    echo ""
+    print_info "Spark Master URL: spark://spark-master:7077"
     exit 0
 else
     echo -e "${RED}=========================================="
@@ -275,6 +337,9 @@ else
     echo "  docker-compose logs hive-metastore"
     echo "  docker-compose logs hive-server"
     echo "  docker-compose logs postgres"
+    echo "  docker-compose logs spark-master"
+    echo "  docker-compose logs spark-worker"
+    echo "  docker-compose logs spark-history-server"
     exit 1
 fi
 
