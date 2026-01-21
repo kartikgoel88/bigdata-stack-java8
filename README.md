@@ -56,11 +56,8 @@ This project provides a containerized big data stack with the following componen
    ```bash
    docker-compose ps
    ```
-
-4. **Initialize HDFS directories for Hive:**
-   ```bash
-   docker-compose exec namenode /opt/scripts/init-hdfs.sh
-   ```
+   
+   Note: HDFS directories (`/tmp`, `/user/hive/warehouse`, `/spark-logs`) are automatically created during NameNode startup.
 
 ## Service URLs
 
@@ -218,7 +215,8 @@ bigdata-stack-java8/
 │   └── hive/                # Hive configuration files
 ├── scripts/
 │   ├── entrypoint.sh        # Service entrypoint script
-│   └── init-hdfs.sh         # HDFS initialization script
+│   └── utils/
+│       └── error-handling.sh  # Error handling utilities
 ├── downloads/               # Pre-downloaded binaries (optional)
 └── README.md                # This file
 ```

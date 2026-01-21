@@ -1,40 +1,9 @@
 #!/usr/bin/env bash
 
-# Java configuration - use JAVA_HOME from environment if set, otherwise detect
-# eclipse-temurin base image sets JAVA_HOME, so we use that if available
-if [ -z "$JAVA_HOME" ] || [ ! -d "$JAVA_HOME" ]; then
-    # Try to source from profile script first
-    if [ -f /etc/profile.d/java-home.sh ]; then
-        source /etc/profile.d/java-home.sh
-    fi
-    
-    # If still not set, try common eclipse-temurin paths
-    if [ -z "$JAVA_HOME" ] || [ ! -d "$JAVA_HOME" ]; then
-        if [ -d /opt/java/openjdk ]; then
-            export JAVA_HOME=/opt/java/openjdk
-        elif [ -d /usr/local/openjdk-8 ]; then
-            export JAVA_HOME=/usr/local/openjdk-8
-        elif [ -d /usr/lib/jvm/java-8-openjdk-amd64 ]; then
-            export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
-        elif [ -d /usr/lib/jvm/java-8-openjdk-arm64 ]; then
-            export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-arm64
-        else
-            # Last resort: detect from java command
-            JAVA_CMD=$(which java 2>/dev/null)
-            if [ -n "$JAVA_CMD" ]; then
-                JAVA_HOME=$(dirname $(dirname $(readlink -f "$JAVA_CMD" 2>/dev/null || echo "$JAVA_CMD")))
-                export JAVA_HOME
-            fi
-        fi
-    fi
-fi
-
-# Verify JAVA_HOME is set and valid
-if [ -z "$JAVA_HOME" ] || [ ! -d "$JAVA_HOME" ]; then
-    echo "ERROR: JAVA_HOME is not set or does not exist. Current value: $JAVA_HOME" >&2
-    echo "Please ensure Java is properly installed." >&2
-    exit 1
-fi
+# Java configuration - detect JAVA_HOME if not set
+[ -z "$JAVA_HOME" ] && { JAVA_CMD=$(which java 2>/dev/null); JAVA_HOME=$([ -n "$JAVA_CMD" ] && dirname $(dirname $(readlink -f "$JAVA_CMD" 2>/dev/null || echo "$JAVA_CMD")) || echo /opt/java/openjdk); }
+[ -z "$JAVA_HOME" ] || [ ! -d "$JAVA_HOME" ] && { echo "ERROR: JAVA_HOME is not set or does not exist. Current value: $JAVA_HOME" >&2; echo "Please ensure Java is properly installed." >&2; exit 1; }
+export JAVA_HOME
 
 # Hadoop configuration
 export HADOOP_HOME=/opt/hadoop

@@ -1,0 +1,111 @@
+# Build argument for base image (must be built locally first)
+# IMPORTANT: Build base image first: docker-compose build base
+ARG BASE_IMAGE=bigdata-stack-base:latest
+FROM ${BASE_IMAGE}
+
+# ========== Build Arguments ==========
+# Must be provided from .env via docker-compose
+ARG HADOOP_HOME
+ARG HIVE_HOME
+ARG SPARK_HOME
+ARG HADOOP_VERSION
+ARG HIVE_VERSION
+ARG SPARK_VERSION
+
+# ========== Environment Variables ==========
+ENV HADOOP_VERSION=${HADOOP_VERSION} \
+    HIVE_VERSION=${HIVE_VERSION} \
+    SPARK_VERSION=${SPARK_VERSION} \
+    HADOOP_HOME=${HADOOP_HOME} \
+    HIVE_HOME=${HIVE_HOME} \
+    SPARK_HOME=${SPARK_HOME} \
+    HADOOP_CONF_DIR=${HADOOP_HOME}/etc/hadoop \
+    HIVE_CONF_DIR=${HIVE_HOME}/conf \
+    SPARK_CONF_DIR=${SPARK_HOME}/conf \
+    PYSPARK_PYTHON=python3 \
+    PYSPARK_DRIVER_PYTHON=python3 \
+    PYTHONPATH=${SPARK_HOME}/python:${SPARK_HOME}/python/lib/py4j-0.10.9.7-src.zip \
+    PATH=$PATH:${HADOOP_HOME}/bin:${HADOOP_HOME}/sbin:${HIVE_HOME}/bin:${SPARK_HOME}/bin:${SPARK_HOME}/sbin
+
+WORKDIR /opt
+
+# ========== Copy Downloads ==========
+COPY downloads/*.tar.gz downloads/postgresql-42.5.6.jar /tmp/
+
+# # ========== Install Hadoop ==========
+# RUN set -e && \
+#     mkdir -p ${HADOOP_HOME} && \
+#     tar -xzf /tmp/hadoop-${HADOOP_VERSION}.tar.gz -C ${HADOOP_HOME} --strip-components=1
+
+# # ========== Install Hive ==========
+# RUN set -e && \
+#     mkdir -p ${HIVE_HOME} && \
+#     tar -xzf /tmp/apache-hive-${HIVE_VERSION}-bin.tar.gz -C ${HIVE_HOME} --strip-components=1 && \
+#     mkdir -p ${HIVE_HOME}/lib ${HIVE_HOME}/warehouse && \
+#     cp /tmp/postgresql-42.5.6.jar ${HIVE_HOME}/lib/ && \
+#     rm -f ${HIVE_HOME}/lib/guava-*.jar && \
+#     cp ${HADOOP_HOME}/share/hadoop/common/lib/guava-*.jar ${HIVE_HOME}/lib/ && \
+#     chmod -R 755 ${HIVE_HOME}/warehouse
+
+# # ========== Install Spark ==========
+# RUN set -e && \
+#     mkdir -p ${SPARK_HOME} && \
+#     tar -xzf /tmp/spark-${SPARK_VERSION}-bin-hadoop3.tar.gz -C ${SPARK_HOME} --strip-components=1 && \
+#     test -d "${SPARK_HOME}/sbin" || (echo "ERROR: Spark sbin directory not found after installation" && exit 1) && \
+#     mkdir -p ${SPARK_HOME}/jars && \
+#     cp /tmp/postgresql-42.5.6.jar ${SPARK_HOME}/jars/
+
+# # ========== Install Python and Dependencies ==========
+# RUN apt-get update && \
+#     apt-get install -y --no-install-recommends python3 python3-pip 
+#     #&& \
+#     # (pip3 install --break-system-packages --no-cache-dir py4j || \
+#     #  pip3 install --user --no-cache-dir py4j || \
+#     #  echo "INFO: py4j installation skipped - Spark includes py4j in lib")
+
+# # ========== Cleanup ==========
+# RUN rm -rf /tmp/*.tar.gz /tmp/*.jar \
+#            /var/lib/apt/lists/* \
+#            ${HADOOP_HOME}/share/doc \
+#            ${HIVE_HOME}/docs \
+#            ${SPARK_HOME}/examples \
+#            ${SPARK_HOME}/data
+# ========== Install Hadoop, Hive, Spark ==========
+RUN set -eux && \
+    # Install Hadoop
+    mkdir -p ${HADOOP_HOME} && \
+    tar -xzf /tmp/hadoop-${HADOOP_VERSION}.tar.gz -C ${HADOOP_HOME} --strip-components=1 && \
+    # Install Hive
+    mkdir -p ${HIVE_HOME} && \
+    tar -xzf /tmp/apache-hive-${HIVE_VERSION}-bin.tar.gz -C ${HIVE_HOME} --strip-components=1 && \
+    mkdir -p ${HIVE_HOME}/lib ${HIVE_HOME}/warehouse && \
+    cp /tmp/postgresql-42.5.6.jar ${HIVE_HOME}/lib/ && \
+    rm -f ${HIVE_HOME}/lib/guava-*.jar && \
+    cp ${HADOOP_HOME}/share/hadoop/common/lib/guava-*.jar ${HIVE_HOME}/lib/ && \
+    chmod -R 755 ${HIVE_HOME}/warehouse && \
+    # Install Spark
+    mkdir -p ${SPARK_HOME} && \
+    tar -xzf /tmp/spark-${SPARK_VERSION}-bin-hadoop3.tar.gz -C ${SPARK_HOME} --strip-components=1 && \
+    test -d "${SPARK_HOME}/sbin" || (echo "ERROR: Spark sbin directory not found after installation" && exit 1) && \
+    mkdir -p ${SPARK_HOME}/jars && \
+    cp /tmp/postgresql-42.5.6.jar ${SPARK_HOME}/jars/ && \
+    # Cleanup downloads
+    rm -rf /tmp/*.tar.gz /tmp/*.jar && \
+    # Cleanup documentation and examples
+    rm -rf ${HADOOP_HOME}/share/doc \
+           ${HIVE_HOME}/docs \
+           ${SPARK_HOME}/examples \
+           ${SPARK_HOME}/data
+
+# ========== Install Python and Dependencies ==========
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3 python3-pip && \
+    # Cleanup apt cache in same layer
+    rm -rf /var/lib/apt/lists/*
+# ========== Copy Entrypoint Script ==========
+COPY scripts/entrypoint.sh /opt/scripts/entrypoint.sh
+RUN chmod +x /opt/scripts/entrypoint.sh
+
+# ========== Entrypoint ==========
+ENTRYPOINT ["/opt/scripts/entrypoint.sh"]
+CMD []

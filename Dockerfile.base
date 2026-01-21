@@ -1,40 +1,27 @@
-FROM eclipse-temurin:8-jdk
+# Build argument for Java version (must be provided from .env via docker-compose)
+ARG JAVA_VERSION
+FROM eclipse-temurin:${JAVA_VERSION}-jdk
 
-# eclipse-temurin sets JAVA_HOME, but we'll create a profile script for consistency
-# Detect JAVA_HOME from the java command and create profile script
-RUN JAVA_HOME_DETECTED=$(dirname $(dirname $(readlink -f $(which java)))) && \
-    echo "Detected JAVA_HOME: $JAVA_HOME_DETECTED" && \
-    echo "export JAVA_HOME=$JAVA_HOME_DETECTED" > /etc/profile.d/java-home.sh && \
-    chmod +x /etc/profile.d/java-home.sh && \
-    echo "JAVA_HOME will be: $JAVA_HOME_DETECTED"
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
 
-# Ensure PATH includes Java (JAVA_HOME is set by base image)
-ENV PATH=$PATH:${JAVA_HOME}/bin
-
-# Install required packages including timezone data and network utilities
-RUN apt-get update && apt-get install -y \
+# Install only essential runtime packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     curl \
     ssh \
     rsync \
-    vim \
     netcat-openbsd \
     postgresql-client \
     tzdata \
-    net-tools \
     iproute2 \
-    iputils-ping \
-    dnsutils \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/share/zoneinfo/UTC /etc/localtime \
     && echo "UTC" > /etc/timezone
 
-# Setup SSH for Hadoop
-RUN ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa && \
-    cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys && \
-    chmod 0600 ~/.ssh/authorized_keys
-
-# Create common directories
+# Common directories
+# Note: /opt/scripts is created by COPY command, /var/run/sshd created in entrypoint.sh
 RUN mkdir -p /opt/scripts
 
 WORKDIR /opt

@@ -1,192 +1,179 @@
 #!/bin/bash
+set -x
 
-# Entrypoint script for Hadoop/Hive services
+ROLE="$1"
+echo "Starting BigData container with role: $ROLE"
 
-set -e
+# ---------- Signal handling ----------
+child_pid=""
 
-# Source environment variables
-if [ -f /etc/profile.d/java-home.sh ]; then
-    source /etc/profile.d/java-home.sh
-fi
-
-# Set HADOOP_HOME if not already set (from Dockerfile ENV)
-export HADOOP_HOME=${HADOOP_HOME:-/opt/hadoop}
-export HIVE_HOME=${HIVE_HOME:-/opt/hive}
-
-# Source Hadoop environment if available
-if [ -f "$HADOOP_HOME/etc/hadoop/hadoop-env.sh" ]; then
-    source "$HADOOP_HOME/etc/hadoop/hadoop-env.sh"
-fi
-
-# Function to format NameNode (only on first run)
-format_namenode() {
-    if [ ! -d "$HADOOP_HOME/data/namenode/current" ]; then
-        echo "Formatting NameNode..."
-        $HADOOP_HOME/bin/hdfs namenode -format -force
-    fi
+term_handler() {
+  echo "Received termination signal"
+  [ -n "$child_pid" ] && kill -0 "$child_pid" 2>/dev/null && kill -TERM "$child_pid" && wait "$child_pid"
+  exit 0
 }
 
-# Function to initialize Hive schema
-init_hive_schema() {
-    echo "Checking Hive schema..."
-    MAX_SCHEMA_RETRIES=5
-    SCHEMA_RETRY=0
-    
-    # Wait for PostgreSQL to be fully ready
-    echo "Waiting for PostgreSQL connection..."
-    until PGPASSWORD=hive psql -h postgres -U hive -d metastore -c "SELECT 1" > /dev/null 2>&1; do
-        echo "Waiting for PostgreSQL to accept connections..."
-        sleep 2
-    done
-    
-    # Check if schema is already initialized
-    if $HIVE_HOME/bin/schematool -dbType postgres -info 2>/dev/null; then
-        echo "Hive schema already initialized."
-        return 0
-    fi
-    
-    # Initialize schema with retries
-    while [ $SCHEMA_RETRY -lt $MAX_SCHEMA_RETRIES ]; do
-        echo "Initializing Hive schema (attempt $((SCHEMA_RETRY + 1))/$MAX_SCHEMA_RETRIES)..."
-        if $HIVE_HOME/bin/schematool -dbType postgres -initSchema; then
-            echo "Hive schema initialized successfully."
-            # Verify schema was created
-            if $HIVE_HOME/bin/schematool -dbType postgres -info 2>/dev/null; then
-                echo "Schema verification successful."
-                return 0
-            else
-                echo "WARNING: Schema initialization reported success but verification failed"
-            fi
-        else
-            SCHEMA_RETRY=$((SCHEMA_RETRY + 1))
-            if [ $SCHEMA_RETRY -lt $MAX_SCHEMA_RETRIES ]; then
-                echo "Schema initialization failed, retrying in 5 seconds..."
-                sleep 5
-            else
-                echo "ERROR: Failed to initialize Hive schema after $MAX_SCHEMA_RETRIES attempts"
-                echo "Please check PostgreSQL connection and permissions"
-                return 1
-            fi
-        fi
-    done
+trap term_handler SIGTERM SIGINT
+
+# ---------- Environment ----------
+export HADOOP_HOME=${HADOOP_HOME}
+export HIVE_HOME=${HIVE_HOME}
+export SPARK_HOME=${SPARK_HOME}
+export HADOOP_CONF_DIR=${HADOOP_CONF_DIR}
+export HIVE_CONF_DIR=${HIVE_CONF_DIR}
+export SPARK_CONF_DIR=${SPARK_CONF_DIR}
+
+# Normalize HIVE_HOME and SPARK_HOME paths if binaries are in versioned subdirectories
+normalize_hive_home() {
+  [ ! -d "$HIVE_HOME/bin" ] && [ -d "$HIVE_HOME/apache-hive-${HIVE_VERSION}-bin/bin" ] && \
+    export HIVE_HOME="$HIVE_HOME/apache-hive-${HIVE_VERSION}-bin"
 }
 
-# Function to wait for log file and tail it
-wait_and_tail_log() {
-    local log_pattern=$1
-    local max_wait=30
-    local wait_count=0
-    
-    echo "Waiting for log file matching pattern: $log_pattern"
-    while [ $wait_count -lt $max_wait ]; do
-        if ls $log_pattern 1> /dev/null 2>&1; then
-            echo "Log file found, starting to tail..."
-            tail -f $log_pattern
-            return 0
-        fi
-        echo "Waiting for log file... ($wait_count/$max_wait)"
-        sleep 1
-        wait_count=$((wait_count + 1))
-    done
-    
-    echo "WARNING: Log file not found after $max_wait seconds. Showing available logs:"
-    ls -la $HADOOP_HOME/logs/ 2>/dev/null || echo "Log directory is empty or doesn't exist"
-    # Keep container running even if log file not found
-    tail -f /dev/null
+normalize_spark_home() {
+  [ ! -d "$SPARK_HOME/sbin" ] && [ -d "$SPARK_HOME/spark-${SPARK_VERSION}-bin-hadoop3/sbin" ] && \
+    export SPARK_HOME="$SPARK_HOME/spark-${SPARK_VERSION}-bin-hadoop3"
 }
 
-# Start SSH service
+normalize_hive_home
+normalize_spark_home
+
+export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$HIVE_HOME/bin:$SPARK_HOME/bin:$SPARK_HOME/sbin
+
+# ---------- Create local filesystem directories ----------
+mkdir -p "$HADOOP_HOME/data/namenode" \
+         "$HADOOP_HOME/data/datanode" \
+         "$HADOOP_HOME/data/tmp" \
+         "$HADOOP_HOME/logs" \
+         "$SPARK_HOME/work" \
+         "$SPARK_HOME/logs" \
+         /var/run/sshd
+
+chmod -R 755 "$HADOOP_HOME/data" "$HADOOP_HOME/logs" "$SPARK_HOME/work" "$SPARK_HOME/logs" 2>/dev/null || true
+
+# ---------- SSH ----------
+[ ! -f /root/.ssh/id_rsa ] && ssh-keygen -t rsa -P '' -f /root/.ssh/id_rsa && \
+  cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys && \
+  chmod 600 /root/.ssh/authorized_keys
+
 service ssh start
 
-# Determine which service to start based on command
-case "$1" in
-    namenode)
-        format_namenode
-        echo "Starting NameNode..."
-        $HADOOP_HOME/sbin/hadoop-daemon.sh start namenode
-        wait_and_tail_log "$HADOOP_HOME/logs/hadoop-*-namenode-*.log"
-        ;;
-    datanode)
-        echo "Starting DataNode..."
-        $HADOOP_HOME/sbin/hadoop-daemon.sh start datanode
-        wait_and_tail_log "$HADOOP_HOME/logs/hadoop-*-datanode-*.log"
-        ;;
-    resourcemanager)
-        echo "Starting ResourceManager..."
-        $HADOOP_HOME/sbin/yarn-daemon.sh start resourcemanager
-        wait_and_tail_log "$HADOOP_HOME/logs/yarn-*-resourcemanager-*.log"
-        ;;
-    nodemanager)
-        echo "Starting NodeManager..."
-        $HADOOP_HOME/sbin/yarn-daemon.sh start nodemanager
-        wait_and_tail_log "$HADOOP_HOME/logs/yarn-*-nodemanager-*.log"
-        ;;
-    metastore)
-        echo "Waiting for PostgreSQL to be ready..."
-        until nc -z postgres 5432; do
-            echo "Waiting for postgres..."
-            sleep 2
-        done
-        echo "PostgreSQL is ready!"
-        init_hive_schema
-        echo "Starting Hive Metastore..."
-        $HIVE_HOME/bin/hive --service metastore
-        ;;
-    hiveserver2)
-        echo "Starting HiveServer2..."
-        
-        # Wait for HDFS NameNode to be ready
-        echo "Waiting for HDFS NameNode to be ready..."
-        MAX_RETRIES=60
-        RETRY_COUNT=0
-        until nc -z namenode 9000; do
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-            if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-                echo "ERROR: NameNode not ready after $MAX_RETRIES attempts"
-                exit 1
-            fi
-            echo "Waiting for NameNode... ($RETRY_COUNT/$MAX_RETRIES)"
-            sleep 2
-        done
-        echo "NameNode is ready!"
-        
-        # Wait for Hive Metastore to be ready
-        echo "Waiting for Hive Metastore to be ready..."
-        RETRY_COUNT=0
-        until nc -z hive-metastore 9083; do
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-            if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-                echo "ERROR: Hive Metastore not ready after $MAX_RETRIES attempts"
-                echo "Please check hive-metastore container logs"
-                exit 1
-            fi
-            echo "Waiting for hive-metastore... ($RETRY_COUNT/$MAX_RETRIES)"
-            sleep 2
-        done
-        echo "Hive Metastore is ready!"
-        
-        # Wait a bit more to ensure metastore is fully initialized
-        sleep 5
-        
-        # Ensure Hive warehouse directory exists in HDFS
-        echo "Ensuring Hive warehouse directory exists in HDFS..."
-        if $HADOOP_HOME/bin/hdfs dfs -test -d /user/hive/warehouse 2>/dev/null; then
-            echo "Hive warehouse directory already exists in HDFS"
-        else
-            echo "Creating Hive warehouse directory in HDFS..."
-            $HADOOP_HOME/bin/hdfs dfs -mkdir -p /user/hive/warehouse 2>/dev/null || echo "WARNING: Could not create warehouse directory, HiveServer2 will try during startup"
-            $HADOOP_HOME/bin/hdfs dfs -chmod -R 777 /user/hive/warehouse 2>/dev/null || true
-        fi
-        
-        # Create logs directory
-        mkdir -p $HIVE_HOME/logs
-        
-        echo "Starting HiveServer2 (this may take 30-90 seconds to fully initialize)..."
-        # Start HiveServer2 in foreground so logs are visible
-        exec $HIVE_HOME/bin/hiveserver2
-        ;;
-    *)
-        exec "$@"
-        ;;
-esac
+# ---------- Helpers ----------
 
+format_namenode() {
+  [ ! -d "$HADOOP_HOME/data/namenode/current" ] && echo "Formatting NameNode..." && hdfs namenode -format -force
+}
+
+wait_for_port() {
+  local host=$1 port=$2 retries=${3:-${WAIT_RETRIES}}
+  for ((i=1;i<=retries;i++)); do
+    nc -z "$host" "$port" 2>/dev/null && echo "$host:$port is reachable" && return 0
+    echo "Waiting for $host:$port ($i/$retries)"
+    sleep 2
+  done
+  return 1
+}
+
+init_hive_schema() {
+  sleep 3
+  
+  SCHEMATOOL="$HIVE_HOME/bin/schematool"
+  echo "Using schematool: $SCHEMATOOL"
+  
+  "$SCHEMATOOL" -dbType postgres -info >/dev/null 2>&1 && echo "Hive schema already initialized" && return 0
+  
+  echo "Initializing Hive schema..."
+  "$SCHEMATOOL" -dbType postgres -initSchema 2>&1 || true
+}
+
+ensure_hdfs_directories() {
+  sleep 5
+  
+  echo "Creating HDFS directories..."
+  hdfs dfs -mkdir -p /tmp /user/${HIVE_USER}/warehouse /spark-logs 2>/dev/null || true
+  hdfs dfs -chmod -R 755 /tmp /user/${HIVE_USER}/warehouse /spark-logs 2>/dev/null || true
+  hdfs dfs -chown -R ${HIVE_USER}:${HIVE_USER} /user/${HIVE_USER}/warehouse 2>/dev/null || true
+}
+
+# ---------- Dispatcher ----------
+
+case "$ROLE" in
+  namenode)
+    format_namenode
+    hdfs namenode &
+    child_pid=$!
+    #ensure_hdfs_directories
+    wait $child_pid
+    ;;
+
+  datanode)
+    hdfs datanode &
+    child_pid=$!
+    wait $child_pid
+    ;;
+
+  resourcemanager)
+    yarn resourcemanager &
+    child_pid=$!
+    wait $child_pid
+    ;;
+
+  nodemanager)
+    yarn nodemanager &
+    child_pid=$!
+    wait $child_pid
+    ;;
+
+  metastore)
+    init_hive_schema || true
+    
+    echo "Starting Hive Metastore..."
+    "$HIVE_HOME/bin/hive" --service metastore &
+    child_pid=$!
+    wait $child_pid
+    ;;
+
+  hiveserver2)
+    ensure_hdfs_directories
+    
+    echo "Starting HiveServer2..."
+    "$HIVE_HOME/bin/hiveserver2" &
+    child_pid=$!
+    wait $child_pid
+    ;;
+
+  spark-master)
+    ensure_hdfs_directories
+    
+    echo "Starting Spark Master..."
+    "$SPARK_HOME/bin/spark-class" org.apache.spark.deploy.master.Master \
+      --host ${SPARK_MASTER_HOST:-0.0.0.0} \
+      --port ${SPARK_MASTER_PORT_CONTAINER:-7077} \
+      --webui-port ${SPARK_MASTER_WEB_PORT_CONTAINER:-8080} &
+    child_pid=$!
+    wait $child_pid
+    ;;
+
+  spark-worker)
+    ensure_hdfs_directories
+    
+    echo "Starting Spark Worker..."
+    "$SPARK_HOME/bin/spark-class" org.apache.spark.deploy.worker.Worker \
+      --webui-port ${SPARK_WORKER_PORT_CONTAINER:-8081} \
+      "$SPARK_MASTER" &
+    child_pid=$!
+    wait $child_pid
+    ;;
+
+  spark-history)
+    ensure_hdfs_directories
+    
+    echo "Starting Spark History Server..."
+    "$SPARK_HOME/bin/spark-class" org.apache.spark.deploy.history.HistoryServer &
+    child_pid=$!
+    wait $child_pid
+    ;;
+
+  *)
+    exec "$@"
+    ;;
+esac

@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License. See accompanying LICENSE file.
+-->
+<configuration>
+  <!--
+    The CapacityScheduler has a predefined queue called 'root'.
+    All queues in the system are children of the root queue.
+    
+    Additional queues may be created by configuring properties with the
+    form 'yarn.scheduler.capacity.<queue-path>.queues', where
+    <queue-path> is the hierarchical path of the queue, starting at root.
+    
+    The root queue's configuration is done similarly to other queues.
+  -->
+
+  <!-- Root queue configuration -->
+  <property>
+    <name>yarn.scheduler.capacity.root.queues</name>
+    <value>default</value>
+    <description>
+      The queues at the root level. For capacity scheduler,
+      the queues are defined as a comma-separated list of queue names.
+    </description>
+  </property>
+
+  <!-- Default queue configuration -->
+  <property>
+    <name>yarn.scheduler.capacity.root.default.capacity</name>
+    <value>100</value>
+    <description>
+      Default queue target capacity.
+    </description>
+  </property>
+
+  <property>
+    <name>yarn.scheduler.capacity.root.default.maximum-capacity</name>
+    <value>100</value>
+    <description>
+      The maximum capacity of the default queue.
+    </description>
+  </property>
+
+  <property>
+    <name>yarn.scheduler.capacity.root.default.state</name>
+    <value>RUNNING</value>
+    <description>
+      The state of the default queue. State can be one of RUNNING or STOPPED.
+    </description>
+  </property>
+
+  <property>
+    <name>yarn.scheduler.capacity.root.default.user-limit-factor</name>
+    <value>1</value>
+    <description>
+      Multiple of the queue capacity which can be configured to allow a
+      single user to acquire more resources. By default this is set to 1 which
+      ensures that a single user can never take more than the queue's
+      configured capacity irrespective of how idle the cluster is.
+    </description>
+  </property>
+
+  <property>
+    <name>yarn.scheduler.capacity.root.default.maximum-allocation-mb</name>
+    <value>8192</value>
+    <description>
+      Maximum memory allocation per container for the default queue.
+    </description>
+  </property>
+
+  <property>
+    <name>yarn.scheduler.capacity.root.default.maximum-allocation-vcores</name>
+    <value>4</value>
+    <description>
+      Maximum vcores allocation per container for the default queue.
+    </description>
+  </property>
+
+  <!-- Root queue ACLs -->
+  <property>
+    <name>yarn.scheduler.capacity.root.acl_submit_applications</name>
+    <value>*</value>
+    <description>
+      The ACL of who can submit jobs to the root queue.
+    </description>
+  </property>
+
+  <property>
+    <name>yarn.scheduler.capacity.root.acl_administer_queue</name>
+    <value>*</value>
+    <description>
+      The ACL of who can administer jobs in the root queue.
+    </description>
+  </property>
+
+  <!-- Default queue ACLs -->
+  <property>
+    <name>yarn.scheduler.capacity.root.default.acl_submit_applications</name>
+    <value>*</value>
+    <description>
+      The ACL of who can submit jobs to the default queue.
+    </description>
+  </property>
+
+  <property>
+    <name>yarn.scheduler.capacity.root.default.acl_administer_queue</name>
+    <value>*</value>
+    <description>
+      The ACL of who can administer jobs in the default queue.
+    </description>
+  </property>
+
+  <!-- Queue placement policy -->
+  <property>
+    <name>yarn.scheduler.capacity.queue-mappings</name>
+    <value></value>
+    <description>
+      A list of mappings that will be used to assign jobs to queues.
+      The syntax for this list is [u|g]:[name]:[queue_name][,next mapping]*.
+      Typically this list will be used to map users or groups to queues.
+    </description>
+  </property>
+
+  <property>
+    <name>yarn.scheduler.capacity.queue-mappings-override.enable</name>
+    <value>false</value>
+    <description>
+      If a queue mapping is present, will it override the value specified
+      by the user? This can be used by administrators to place jobs in queues
+      that are different than the one specified by the user.
+    </description>
+  </property>
+
+</configuration>
+

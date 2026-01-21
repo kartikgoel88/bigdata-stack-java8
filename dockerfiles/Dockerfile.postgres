@@ -1,4 +1,6 @@
-FROM postgres:13
+# Build argument for PostgreSQL version (can be overridden from .env via docker-compose)
+ARG POSTGRES_VERSION=13
+FROM postgres:${POSTGRES_VERSION}
 
 # Install network utilities
 RUN apt-get update && apt-get install -y --no-install-recommends \

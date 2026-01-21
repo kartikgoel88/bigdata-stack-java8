@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
+    <!-- Note: Update these values to match your .env file -->
+    <!-- POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD -->
     <property>
         <name>javax.jdo.option.ConnectionURL</name>
         <value>jdbc:postgresql://postgres:5432/metastore</value>
+        <!-- Should match: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB} -->
     </property>
     <property>
         <name>javax.jdo.option.ConnectionDriverName</name>
@@ -25,8 +28,23 @@
         <value>5</value>
     </property>
     <property>
+        <name>hive.metastore.client.connect.retry.delay.max</name>
+        <value>60</value>
+        <description>Maximum delay between retries in seconds</description>
+    </property>
+    <property>
+        <name>hive.metastore.client.connect.retry.attempts</name>
+        <value>24</value>
+        <description>Number of retry attempts to connect to metastore</description>
+    </property>
+    <property>
         <name>hive.metastore.client.socket.timeout</name>
         <value>1800</value>
+    </property>
+    <property>
+        <name>hive.metastore.client.socket.lifetime</name>
+        <value>0</value>
+        <description>Socket lifetime in seconds (0 = unlimited)</description>
     </property>
     <property>
         <name>hive.metastore.schema.verification</name>
@@ -64,6 +82,27 @@
     <property>
         <name>hive.server2.thrift.bind.host</name>
         <value>0.0.0.0</value>
+        <description>HiveServer2 Thrift server bind address - bind to all interfaces</description>
+    </property>
+    <property>
+        <name>hive.server2.transport.mode</name>
+        <value>binary</value>
+        <description>Transport mode for HiveServer2</description>
+    </property>
+    <property>
+        <name>hive.server2.thrift.http.port</name>
+        <value>10001</value>
+        <description>HTTP port for HiveServer2 (if using HTTP transport)</description>
+    </property>
+    <property>
+        <name>hive.server2.thrift.http.path</name>
+        <value>cliservice</value>
+        <description>HTTP path for HiveServer2</description>
+    </property>
+    <property>
+        <name>hive.server2.authentication</name>
+        <value>NONE</value>
+        <description>Authentication mode for HiveServer2 (NONE, LDAP, PAM, etc.)</description>
     </property>
     <!-- Spark Integration -->
     <property>

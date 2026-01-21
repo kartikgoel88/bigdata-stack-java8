@@ -31,7 +31,23 @@
     </property>
     <property>
         <name>yarn.resourcemanager.webapp.address</name>
-        <value>resourcemanager:8088</value>
+        <value>0.0.0.0:8088</value>
+        <description>ResourceManager webapp address - bind to all interfaces for healthcheck</description>
+    </property>
+    <property>
+        <name>yarn.resourcemanager.bind-host</name>
+        <value>0.0.0.0</value>
+        <description>ResourceManager bind host - bind to all interfaces</description>
+    </property>
+    <property>
+        <name>yarn.nodemanager.bind-host</name>
+        <value>0.0.0.0</value>
+        <description>NodeManager bind host - bind to all interfaces</description>
+    </property>
+    <property>
+        <name>yarn.nodemanager.webapp.address</name>
+        <value>0.0.0.0:8042</value>
+        <description>NodeManager webapp address</description>
     </property>
 </configuration>
 

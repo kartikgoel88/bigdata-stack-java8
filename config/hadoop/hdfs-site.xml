@@ -21,5 +21,25 @@
         <name>dfs.permissions.enabled</name>
         <value>false</value>
     </property>
+    <property>
+        <name>dfs.namenode.rpc-bind-host</name>
+        <value>0.0.0.0</value>
+        <description>NameNode RPC server bind address - bind to all interfaces</description>
+    </property>
+    <property>
+        <name>dfs.namenode.servicerpc-bind-host</name>
+        <value>0.0.0.0</value>
+        <description>NameNode service RPC server bind address</description>
+    </property>
+    <property>
+        <name>dfs.datanode.address</name>
+        <value>0.0.0.0:9866</value>
+        <description>DataNode RPC server address</description>
+    </property>
+    <property>
+        <name>dfs.datanode.http.address</name>
+        <value>0.0.0.0:9864</value>
+        <description>DataNode HTTP server address</description>
+    </property>
 </configuration>
 

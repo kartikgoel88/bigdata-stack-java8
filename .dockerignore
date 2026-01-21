@@ -3,3 +3,7 @@
 .gitignore
 README.md
 .DS_Store
+.git
+target/
+logs/
+*.tar.gz

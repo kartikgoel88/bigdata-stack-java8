@@ -1,268 +1,380 @@
+
 services:
-  # Build base image first
   base:
     build:
       context: .
       dockerfile: Dockerfile.base
+      args:
+        JAVA_VERSION: ${JAVA_VERSION}
     image: bigdata-stack-base:latest
+    # This service is only used for building, not running
+
+  runtime:
+    build:
+      context: .
+      dockerfile: Dockerfile.hadoop-spark-base
+      args:
+        BASE_IMAGE: bigdata-stack-base:latest
+        HADOOP_HOME: ${HADOOP_HOME}
+        HIVE_HOME: ${HIVE_HOME}
+        SPARK_HOME: ${SPARK_HOME}
+        HADOOP_VERSION: ${HADOOP_VERSION}
+        HIVE_VERSION: ${HIVE_VERSION}
+        SPARK_VERSION: ${SPARK_VERSION}
+    image: bigdata-runtime:hadoop
+    # Note: Base image must be built first before building runtime
+    # Build order: docker-compose build base && docker-compose build runtime
 
   namenode:
-    build:
-      context: .
-      dockerfile: dockerfiles/Dockerfile.hadoop
-      args:
-        BASE_IMAGE: bigdata-stack-base:latest
-    depends_on:
-      - base
+    image: bigdata-runtime:hadoop
     container_name: hadoop-namenode
-    hostname: namenode
-    ports:
-      - "9870:9870"  # NameNode Web UI
-      - "9000:9000"  # NameNode RPC
-    volumes:
-      - namenode-data:/opt/hadoop/data/namenode
-      - hadoop-tmp:/opt/hadoop/data/tmp
-    environment:
-      - CLUSTER_NAME=hadoop-cluster
-      - TZ=UTC
+    hostname: ${NAMENODE_HOST}
     command: namenode
-    networks:
-      - hadoop-network
+    restart: unless-stopped
+    environment:
+      HADOOP_HOME: ${HADOOP_HOME}
+      HIVE_USER: ${HIVE_USER}
+      NAMENODE_RPC_PORT_CONTAINER: ${NAMENODE_RPC_PORT_CONTAINER}
+      WAIT_RETRIES: ${WAIT_RETRIES}
+    ports:
+      - "${NAMENODE_WEB_PORT}:${NAMENODE_WEB_PORT_CONTAINER}"
+      - "${NAMENODE_RPC_PORT}:${NAMENODE_RPC_PORT_CONTAINER}"
+    volumes:
+      - namenode-data:${HADOOP_HOME}/data/namenode
+      - ./config/hadoop:${HADOOP_CONF_DIR}
+      - hadoop-logs:${HADOOP_HOME}/logs
+    networks: [hadoop-network]
+    healthcheck:
+      test: ["CMD-SHELL", "hdfs dfsadmin -report >/dev/null 2>&1 || nc -z localhost ${NAMENODE_RPC_PORT_CONTAINER} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
 
   datanode:
-    build:
-      context: .
-      dockerfile: dockerfiles/Dockerfile.hadoop
-      args:
-        BASE_IMAGE: bigdata-stack-base:latest
-    depends_on:
-      - base
-      - namenode
-    container_name: hadoop-datanode
+    image: bigdata-runtime:hadoop
     hostname: datanode
-    ports:
-      - "9864:9864"  # DataNode Web UI
-    volumes:
-      - datanode-data:/opt/hadoop/data/datanode
-      - hadoop-tmp:/opt/hadoop/data/tmp
-    environment:
-      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
-      - TZ=UTC
     command: datanode
-    networks:
-      - hadoop-network
-
-  resourcemanager:
-    build:
-      context: .
-      dockerfile: dockerfiles/Dockerfile.hadoop
-      args:
-        BASE_IMAGE: bigdata-stack-base:latest
+    restart: unless-stopped
+    environment:
+      HADOOP_HOME: ${HADOOP_HOME}
+      WAIT_RETRIES: ${WAIT_RETRIES}
     depends_on:
-      - base
-      - namenode
-      - datanode
-    container_name: hadoop-resourcemanager
-    hostname: resourcemanager
+      namenode:
+        condition: service_healthy
     ports:
-      - "8088:8088"  # ResourceManager Web UI
-    environment:
-      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
-      - YARN_CONF_yarn_resourcemanager_address=resourcemanager:8032
-      - TZ=UTC
-    command: resourcemanager
-    networks:
-      - hadoop-network
-
-  nodemanager:
-    build:
-      context: .
-      dockerfile: dockerfiles/Dockerfile.hadoop
-      args:
-        BASE_IMAGE: bigdata-stack-base:latest
-    depends_on:
-      - base
-      - namenode
-      - datanode
-      - resourcemanager
-    container_name: hadoop-nodemanager
-    hostname: nodemanager
-    environment:
-      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
-      - TZ=UTC
-    command: nodemanager
-    networks:
-      - hadoop-network
-
-  postgres:
-    build:
-      context: .
-      dockerfile: dockerfiles/Dockerfile.postgres
-    image: bigdata-postgres:latest
-    container_name: hive-postgres
-    hostname: postgres
-    environment:
-      - POSTGRES_USER=hive
-      - POSTGRES_PASSWORD=hive
-      - POSTGRES_DB=metastore
-      - TZ=UTC
-      - PGTZ=UTC
+      - "${DATANODE_PORT}:${DATANODE_PORT_CONTAINER}"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./config/postgres/init-postgres.sh:/docker-entrypoint-initdb.d/init-postgres.sh
-    ports:
-      - "5432:5432"
+      - datanode-data:${HADOOP_HOME}/data/datanode
+      - hadoop-tmp:${HADOOP_HOME}/data/tmp
+      - ./config/hadoop:${HADOOP_CONF_DIR}
+      - hadoop-logs:${HADOOP_HOME}/logs
+    networks: [hadoop-network]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hive -d metastore"]
+      test: ["CMD-SHELL", "nc -z localhost ${DATANODE_PORT_CONTAINER} || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - hadoop-network
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  resourcemanager:
+    image: bigdata-runtime:hadoop
+    hostname: resourcemanager
+    command: resourcemanager
+    restart: unless-stopped
+    environment:
+      HADOOP_HOME: ${HADOOP_HOME}
+      WAIT_RETRIES: ${WAIT_RETRIES}
+    depends_on:
+      - namenode
+    ports:
+      - "${RESOURCEMANAGER_PORT}:${RESOURCEMANAGER_PORT_CONTAINER}"
+    volumes:
+      - ./config/hadoop:${HADOOP_CONF_DIR}
+      - hadoop-logs:${HADOOP_HOME}/logs
+    networks: [hadoop-network]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:${RESOURCEMANAGER_PORT_CONTAINER}/ws/v1/cluster/info >/dev/null 2>&1 || nc -z localhost ${RESOURCEMANAGER_PORT_CONTAINER} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  nodemanager:
+    image: bigdata-runtime:hadoop
+    hostname: nodemanager
+    command: nodemanager
+    restart: unless-stopped
+    environment:
+      HADOOP_HOME: ${HADOOP_HOME}
+      WAIT_RETRIES: ${WAIT_RETRIES}
+    depends_on:
+      resourcemanager:
+        condition: service_healthy
+      namenode:
+        condition: service_healthy
+    ports:
+      - "${NODEMANAGER_PORT}:${NODEMANAGER_PORT_CONTAINER}"
+    volumes:
+      - ./config/hadoop:${HADOOP_CONF_DIR}
+      - hadoop-logs:${HADOOP_HOME}/logs
+    networks: [hadoop-network]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8042/node >/dev/null 2>&1 || jps | grep -i NodeManager || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  postgres:
+    image: postgres:${POSTGRES_VERSION}
+    hostname: ${POSTGRES_HOST}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:${POSTGRES_PORT_CONTAINER}"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./config/postgres/init-postgres.sh:/docker-entrypoint-initdb.d/01-init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [hadoop-network]
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
 
   hive-metastore:
-    build:
-      context: .
-      dockerfile: dockerfiles/Dockerfile.hadoop
-      args:
-        BASE_IMAGE: bigdata-stack-base:latest
+    image: bigdata-runtime:hadoop
+    hostname: ${HIVE_METASTORE_HOST}
+    container_name: hive-metastore
+    command: metastore
+    restart: unless-stopped
+    environment:
+      HADOOP_HOME: ${HADOOP_HOME}
+      HIVE_HOME: ${HIVE_HOME}
+      HIVE_VERSION: ${HIVE_VERSION}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_PORT_CONTAINER: ${POSTGRES_PORT_CONTAINER}
+      WAIT_RETRIES: ${WAIT_RETRIES}
     depends_on:
-      base:
-        condition: service_started
-      namenode:
-        condition: service_started
-      datanode:
-        condition: service_started
       postgres:
         condition: service_healthy
-    container_name: hive-metastore
-    hostname: hive-metastore
+      namenode:
+        condition: service_healthy
     ports:
-      - "9083:9083"  # Hive Metastore Thrift
-    environment:
-      - SERVICE_NAME=metastore
-      - TZ=UTC
-    command: metastore
-    networks:
-      - hadoop-network
+      - "${HIVE_METASTORE_PORT}:${HIVE_METASTORE_PORT_CONTAINER}"
+    volumes:
+      - ./config/hadoop:${HADOOP_CONF_DIR}
+      - ./config/hive:${HIVE_CONF_DIR}
+      - hive-logs:${HIVE_HOME}/logs
+    networks: [hadoop-network]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost ${HIVE_METASTORE_PORT_CONTAINER} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
 
   hive-server:
-    build:
-      context: .
-      dockerfile: dockerfiles/Dockerfile.hadoop
-      args:
-        BASE_IMAGE: bigdata-stack-base:latest
-    depends_on:
-      - base
-      - namenode
-      - datanode
-      - hive-metastore
-    container_name: hive-server
+    image: bigdata-runtime:hadoop
     hostname: hive-server
-    ports:
-      - "10000:10000"  # HiveServer2
-    environment:
-      - SERVICE_NAME=hiveserver2
-      - HADOOP_HOME=/opt/hadoop
-      - HIVE_HOME=/opt/hive
-      - TZ=UTC
+    container_name: hive-server
     command: hiveserver2
+    restart: unless-stopped
+    environment:
+      HADOOP_HOME: ${HADOOP_HOME}
+      HIVE_HOME: ${HIVE_HOME}
+      HIVE_VERSION: ${HIVE_VERSION}
+      HIVE_USER: ${HIVE_USER}
+      HIVE_METASTORE_HOST: ${HIVE_METASTORE_HOST}
+      HIVE_METASTORE_PORT: ${HIVE_METASTORE_PORT}
+      HIVE_METASTORE_PORT_CONTAINER: ${HIVE_METASTORE_PORT_CONTAINER}
+      HIVESERVER2_PORT_CONTAINER: ${HIVESERVER2_PORT_CONTAINER}
+      NAMENODE_HOST: ${NAMENODE_HOST}
+      NAMENODE_RPC_PORT_CONTAINER: ${NAMENODE_RPC_PORT_CONTAINER}
+      WAIT_RETRIES: ${WAIT_RETRIES}
+    depends_on:
+      hive-metastore:
+        condition: service_healthy
+      namenode:
+        condition: service_healthy
+    ports:
+      - "${HIVESERVER2_PORT}:${HIVESERVER2_PORT_CONTAINER}"
+    volumes:
+      - ./config/hadoop:${HADOOP_CONF_DIR}
+      - ./config/hive:${HIVE_CONF_DIR}
+      - hive-logs:${HIVE_HOME}/logs
+    networks: [hadoop-network]
     healthcheck:
-      test: ["CMD-SHELL", "netstat -tuln | grep -q ':10000' || ss -tuln | grep -q ':10000'"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 120s
-    networks:
-      - hadoop-network
+      test: ["CMD-SHELL", "nc -z localhost ${HIVESERVER2_PORT_CONTAINER} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
 
   spark-master:
-    build:
-      context: .
-      dockerfile: dockerfiles/Dockerfile.spark
-      args:
-        BASE_IMAGE: bigdata-stack-base:latest
-    depends_on:
-      - base
-      - namenode
-      - datanode
-      - hive-metastore
-    container_name: spark-master
-    hostname: spark-master
-    ports:
-      - "7077:7077"  # Spark Master
-      - "8080:8080"  # Spark Master Web UI
+    image: bigdata-runtime:hadoop
+    hostname: ${SPARK_MASTER_HOST}
+    command: spark-master
+    restart: unless-stopped
     environment:
-      - SPARK_MASTER_PORT=7077
-      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
-      - TZ=UTC
+      HADOOP_HOME: ${HADOOP_HOME}
+      SPARK_HOME: ${SPARK_HOME}
+    depends_on:
+      namenode:
+        condition: service_healthy
+    ports:
+      - "${SPARK_MASTER_PORT}:${SPARK_MASTER_PORT_CONTAINER}"
+      - "${SPARK_MASTER_WEB_PORT}:${SPARK_MASTER_WEB_PORT_CONTAINER}"
     volumes:
-      - spark-work:/opt/spark/work
-      - spark-logs:/opt/spark/logs
-    command: bash -c "/opt/spark/sbin/start-master.sh && sleep 2 && tail -f /opt/spark/logs/spark-*-org.apache.spark.deploy.master.Master-*.out 2>/dev/null || tail -f /dev/null"
-    networks:
-      - hadoop-network
+      - ./config/hadoop:${HADOOP_CONF_DIR}
+      - ./config/spark:${SPARK_CONF_DIR}
+      - spark-logs:${SPARK_HOME}/logs
+    networks: [hadoop-network]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost ${SPARK_MASTER_PORT_CONTAINER} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
 
   spark-worker:
-    build:
-      context: .
-      dockerfile: dockerfiles/Dockerfile.spark
-      args:
-        BASE_IMAGE: bigdata-stack-base:latest
-    depends_on:
-      - base
-      - namenode
-      - datanode
-      - hive-metastore
-      - spark-master
-    container_name: spark-worker
+    image: bigdata-runtime:hadoop
     hostname: spark-worker
-    ports:
-      - "8081:8081"  # Spark Worker Web UI
+    command: spark-worker
+    restart: unless-stopped
     environment:
-      - SPARK_MASTER=spark://spark-master:7077
-      - SPARK_WORKER_CORES=2
-      - SPARK_WORKER_MEMORY=2g
-      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
-      - TZ=UTC
+      HADOOP_HOME: ${HADOOP_HOME}
+      SPARK_HOME: ${SPARK_HOME}
+      SPARK_VERSION: ${SPARK_VERSION}
+      SPARK_MASTER: ${SPARK_MASTER}
+      SPARK_MASTER_HOST: ${SPARK_MASTER_HOST}
+      SPARK_MASTER_PORT_CONTAINER: ${SPARK_MASTER_PORT_CONTAINER}
+      NAMENODE_HOST: ${NAMENODE_HOST}
+      NAMENODE_RPC_PORT_CONTAINER: ${NAMENODE_RPC_PORT_CONTAINER}
+      WAIT_RETRIES: ${WAIT_RETRIES}
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      namenode:
+        condition: service_healthy
+    ports:
+      - "${SPARK_WORKER_PORT}:${SPARK_WORKER_PORT_CONTAINER}"
     volumes:
-      - spark-work:/opt/spark/work
-      - spark-logs:/opt/spark/logs
-    command: bash -c "/opt/spark/sbin/start-worker.sh spark://spark-master:7077 && sleep 2 && tail -f /opt/spark/logs/spark-*-org.apache.spark.deploy.worker.Worker-*.out 2>/dev/null || tail -f /dev/null"
-    networks:
-      - hadoop-network
+      - ./config/hadoop:${HADOOP_CONF_DIR}
+      - ./config/spark:${SPARK_CONF_DIR}
+      - spark-logs:${SPARK_HOME}/logs
+    networks: [hadoop-network]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost ${SPARK_WORKER_PORT_CONTAINER} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
 
   spark-history-server:
-    build:
-      context: .
-      dockerfile: dockerfiles/Dockerfile.spark
-      args:
-        BASE_IMAGE: bigdata-stack-base:latest
-    depends_on:
-      - base
-      - namenode
-      - datanode
-      - hive-metastore
-    container_name: spark-history-server
+    image: bigdata-runtime:hadoop
     hostname: spark-history-server
-    ports:
-      - "18080:18080"  # Spark History Server Web UI
+    command: spark-history
+    restart: unless-stopped
     environment:
-      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
-      - TZ=UTC
-    command: bash -c "/opt/spark/sbin/start-history-server.sh && sleep 2 && tail -f /opt/spark/logs/spark-*-org.apache.spark.deploy.history.HistoryServer-*.out 2>/dev/null || tail -f /dev/null"
-    networks:
-      - hadoop-network
+      HADOOP_HOME: ${HADOOP_HOME}
+      SPARK_HOME: ${SPARK_HOME}
+    depends_on:
+      namenode:
+        condition: service_healthy
+    ports:
+      - "${SPARK_HISTORY_PORT}:${SPARK_HISTORY_PORT_CONTAINER}"
+    volumes:
+      - ./config/hadoop:${HADOOP_CONF_DIR}
+      - ./config/spark:${SPARK_CONF_DIR}
+      - spark-logs:${SPARK_HOME}/logs
+    networks: [hadoop-network]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost ${SPARK_HISTORY_PORT_CONTAINER} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
 
 volumes:
   namenode-data:
   datanode-data:
   hadoop-tmp:
   postgres-data:
-  spark-work:
+  hadoop-logs:
+  hive-logs:
   spark-logs:
 
 networks:
   hadoop-network:
-    name: bigdata-hadoop-network
     driver: bridge
+    name: bigdata-hadoop-network
