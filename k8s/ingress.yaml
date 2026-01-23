@@ -1,0 +1,44 @@
+# Ingress for Web UIs
+# Note: This requires an ingress controller (nginx, traefik, etc.) to be installed
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bigdata-stack-ingress
+  namespace: bigdata-stack
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: bigdata.local  # Change this to your domain or use IP
+    http:
+      paths:
+      - path: /namenode
+        pathType: Prefix
+        backend:
+          service:
+            name: namenode
+            port:
+              number: 9870
+      - path: /resourcemanager
+        pathType: Prefix
+        backend:
+          service:
+            name: resourcemanager
+            port:
+              number: 8088
+      - path: /spark-master
+        pathType: Prefix
+        backend:
+          service:
+            name: spark-master
+            port:
+              number: 8080
+      - path: /spark-history
+        pathType: Prefix
+        backend:
+          service:
+            name: spark-history-server
+            port:
+              number: 18080
+
+

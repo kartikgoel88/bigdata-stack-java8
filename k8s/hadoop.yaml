@@ -1,0 +1,330 @@
+# NameNode StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: namenode
+  namespace: bigdata-stack
+spec:
+  serviceName: namenode
+  replicas: 1
+  selector:
+    matchLabels:
+      app: namenode
+  template:
+    metadata:
+      labels:
+        app: namenode
+    spec:
+      containers:
+      - name: namenode
+        image: bigdata-runtime:hadoop
+        command: ["/bin/bash", "/scripts/entrypoint.sh", "namenode"]
+        ports:
+        - containerPort: 9870
+          name: web
+        - containerPort: 9000
+          name: rpc
+        envFrom:
+        - configMapRef:
+            name: bigdata-env
+        volumeMounts:
+        - name: namenode-data
+          mountPath: /opt/hadoop/data/namenode
+        - name: hadoop-config
+          mountPath: /opt/hadoop/etc/hadoop
+        - name: hadoop-tmp
+          mountPath: /opt/hadoop/data/tmp
+        - name: hadoop-logs
+          mountPath: /opt/hadoop/logs
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - hdfs dfsadmin -report >/dev/null 2>&1 || nc -z localhost 9000 || exit 1
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 10
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - nc -z localhost 9000
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+      volumes:
+      - name: namenode-data
+        persistentVolumeClaim:
+          claimName: namenode-data
+      - name: hadoop-config
+        configMap:
+          name: hadoop-config
+      - name: hadoop-tmp
+        persistentVolumeClaim:
+          claimName: hadoop-tmp
+      - name: hadoop-logs
+        emptyDir: {}
+---
+# DataNode Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datanode
+  namespace: bigdata-stack
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: datanode
+  template:
+    metadata:
+      labels:
+        app: datanode
+    spec:
+      containers:
+      - name: datanode
+        image: bigdata-runtime:hadoop
+        command: ["/bin/bash", "/scripts/entrypoint.sh", "datanode"]
+        ports:
+        - containerPort: 9864
+          name: web
+        envFrom:
+        - configMapRef:
+            name: bigdata-env
+        volumeMounts:
+        - name: datanode-data
+          mountPath: /opt/hadoop/data/datanode
+        - name: hadoop-config
+          mountPath: /opt/hadoop/etc/hadoop
+        - name: hadoop-tmp
+          mountPath: /opt/hadoop/data/tmp
+        - name: hadoop-logs
+          mountPath: /opt/hadoop/logs
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - nc -z localhost 9864
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - nc -z localhost 9864
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+      volumes:
+      - name: datanode-data
+        emptyDir: {}  # Using emptyDir for DataNodes - for persistent storage, use StatefulSet with volumeClaimTemplates
+      - name: hadoop-config
+        configMap:
+          name: hadoop-config
+      - name: hadoop-tmp
+        persistentVolumeClaim:
+          claimName: hadoop-tmp
+      - name: hadoop-logs
+        emptyDir: {}
+---
+# ResourceManager Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resourcemanager
+  namespace: bigdata-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: resourcemanager
+  template:
+    metadata:
+      labels:
+        app: resourcemanager
+    spec:
+      containers:
+      - name: resourcemanager
+        image: bigdata-runtime:hadoop
+        command: ["/bin/bash", "/scripts/entrypoint.sh", "resourcemanager"]
+        ports:
+        - containerPort: 8088
+          name: web
+        envFrom:
+        - configMapRef:
+            name: bigdata-env
+        volumeMounts:
+        - name: hadoop-config
+          mountPath: /opt/hadoop/etc/hadoop
+        - name: hadoop-logs
+          mountPath: /opt/hadoop/logs
+        livenessProbe:
+          httpGet:
+            path: /ws/v1/cluster/info
+            port: 8088
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 10
+        readinessProbe:
+          httpGet:
+            path: /ws/v1/cluster/info
+            port: 8088
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+      volumes:
+      - name: hadoop-config
+        configMap:
+          name: hadoop-config
+      - name: hadoop-logs
+        emptyDir: {}
+---
+# NodeManager Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nodemanager
+  namespace: bigdata-stack
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nodemanager
+  template:
+    metadata:
+      labels:
+        app: nodemanager
+    spec:
+      containers:
+      - name: nodemanager
+        image: bigdata-runtime:hadoop
+        command: ["/bin/bash", "/scripts/entrypoint.sh", "nodemanager"]
+        ports:
+        - containerPort: 8042
+          name: web
+        envFrom:
+        - configMapRef:
+            name: bigdata-env
+        volumeMounts:
+        - name: hadoop-config
+          mountPath: /opt/hadoop/etc/hadoop
+        - name: hadoop-logs
+          mountPath: /opt/hadoop/logs
+        livenessProbe:
+          httpGet:
+            path: /node
+            port: 8042
+          initialDelaySeconds: 40
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /node
+            port: 8042
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          timeoutSeconds: 3
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+      volumes:
+      - name: hadoop-config
+        configMap:
+          name: hadoop-config
+      - name: hadoop-logs
+        emptyDir: {}
+---
+# Services for Hadoop components
+apiVersion: v1
+kind: Service
+metadata:
+  name: namenode
+  namespace: bigdata-stack
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9870
+    targetPort: 9870
+    name: web
+  - port: 9000
+    targetPort: 9000
+    name: rpc
+  selector:
+    app: namenode
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: datanode
+  namespace: bigdata-stack
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - port: 9864
+    targetPort: 9864
+    name: web
+  selector:
+    app: datanode
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: resourcemanager
+  namespace: bigdata-stack
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8088
+    targetPort: 8088
+    name: web
+  selector:
+    app: resourcemanager
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodemanager
+  namespace: bigdata-stack
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - port: 8042
+    targetPort: 8042
+    name: web
+  selector:
+    app: nodemanager
+

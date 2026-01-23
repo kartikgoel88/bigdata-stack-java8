@@ -1,0 +1,322 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hadoop-config
+  namespace: bigdata-stack
+data:
+  core-site.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+    <configuration>
+        <property>
+            <name>fs.defaultFS</name>
+            <value>hdfs://namenode:9000</value>
+        </property>
+        <property>
+            <name>hadoop.tmp.dir</name>
+            <value>/opt/hadoop/data/tmp</value>
+        </property>
+        <property>
+            <name>hadoop.proxyuser.hue.hosts</name>
+            <value>*</value>
+        </property>
+        <property>
+            <name>hadoop.proxyuser.hue.groups</name>
+            <value>*</value>
+        </property>
+    </configuration>
+  hdfs-site.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+    <configuration>
+        <property>
+            <name>dfs.replication</name>
+            <value>1</value>
+        </property>
+        <property>
+            <name>dfs.namenode.name.dir</name>
+            <value>file:///opt/hadoop/data/namenode</value>
+        </property>
+        <property>
+            <name>dfs.datanode.data.dir</name>
+            <value>file:///opt/hadoop/data/datanode</value>
+        </property>
+        <property>
+            <name>dfs.namenode.datanode.registration.ip___hostname___check</name>
+            <value>false</value>
+        </property>
+        <property>
+            <name>dfs.permissions.enabled</name>
+            <value>false</value>
+        </property>
+        <property>
+            <name>dfs.namenode.rpc-bind-host</name>
+            <value>0.0.0.0</value>
+            <description>NameNode RPC server bind address - bind to all interfaces</description>
+        </property>
+        <property>
+            <name>dfs.namenode.servicerpc-bind-host</name>
+            <value>0.0.0.0</value>
+            <description>NameNode service RPC server bind address</description>
+        </property>
+        <property>
+            <name>dfs.datanode.address</name>
+            <value>0.0.0.0:9866</value>
+            <description>DataNode RPC server address</description>
+        </property>
+        <property>
+            <name>dfs.datanode.http.address</name>
+            <value>0.0.0.0:9864</value>
+            <description>DataNode HTTP server address</description>
+        </property>
+    </configuration>
+  yarn-site.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+    <configuration>
+        <property>
+            <name>yarn.nodemanager.aux-services</name>
+            <value>mapreduce_shuffle</value>
+        </property>
+        <property>
+            <name>yarn.nodemanager.env-whitelist</name>
+            <value>JAVA_HOME,HADOOP_COMMON_HOME,HADOOP_HDFS_HOME,HADOOP_CONF_DIR,CLASSPATH_PREPEND_DISTCACHE,HADOOP_YARN_HOME,HADOOP_MAPRED_HOME</value>
+        </property>
+        <property>
+            <name>yarn.resourcemanager.hostname</name>
+            <value>resourcemanager</value>
+        </property>
+        <property>
+            <name>yarn.resourcemanager.address</name>
+            <value>resourcemanager:8032</value>
+        </property>
+        <property>
+            <name>yarn.resourcemanager.scheduler.address</name>
+            <value>resourcemanager:8030</value>
+        </property>
+        <property>
+            <name>yarn.resourcemanager.resource-tracker.address</name>
+            <value>resourcemanager:8031</value>
+        </property>
+        <property>
+            <name>yarn.resourcemanager.admin.address</name>
+            <value>resourcemanager:8033</value>
+        </property>
+        <property>
+            <name>yarn.resourcemanager.webapp.address</name>
+            <value>0.0.0.0:8088</value>
+            <description>ResourceManager webapp address - bind to all interfaces for healthcheck</description>
+        </property>
+        <property>
+            <name>yarn.resourcemanager.bind-host</name>
+            <value>0.0.0.0</value>
+            <description>ResourceManager bind host - bind to all interfaces</description>
+        </property>
+        <property>
+            <name>yarn.nodemanager.bind-host</name>
+            <value>0.0.0.0</value>
+            <description>NodeManager bind host - bind to all interfaces</description>
+        </property>
+        <property>
+            <name>yarn.nodemanager.webapp.address</name>
+            <value>0.0.0.0:8042</value>
+            <description>NodeManager webapp address</description>
+        </property>
+    </configuration>
+  mapred-site.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+    <configuration>
+        <property>
+            <name>mapreduce.framework.name</name>
+            <value>yarn</value>
+        </property>
+        <property>
+            <name>mapreduce.application.classpath</name>
+            <value>$HADOOP_MAPRED_HOME/share/hadoop/mapreduce/*:$HADOOP_MAPRED_HOME/share/hadoop/mapreduce/lib/*</value>
+        </property>
+        <property>
+            <name>yarn.app.mapreduce.am.env</name>
+            <value>HADOOP_MAPRED_HOME=$HADOOP_HOME</value>
+        </property>
+        <property>
+            <name>mapreduce.map.env</name>
+            <value>HADOOP_MAPRED_HOME=$HADOOP_HOME</value>
+        </property>
+        <property>
+            <name>mapreduce.reduce.env</name>
+            <value>HADOOP_MAPRED_HOME=$HADOOP_HOME</value>
+        </property>
+    </configuration>
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hive-config
+  namespace: bigdata-stack
+data:
+  hive-site.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <configuration>
+        <property>
+            <name>javax.jdo.option.ConnectionURL</name>
+            <value>jdbc:postgresql://postgres:5432/metastore</value>
+        </property>
+        <property>
+            <name>javax.jdo.option.ConnectionDriverName</name>
+            <value>org.postgresql.Driver</value>
+        </property>
+        <property>
+            <name>javax.jdo.option.ConnectionUserName</name>
+            <value>hive</value>
+        </property>
+        <property>
+            <name>javax.jdo.option.ConnectionPassword</name>
+            <value>hive</value>
+        </property>
+        <property>
+            <name>hive.metastore.uris</name>
+            <value>thrift://hive-metastore:9083</value>
+        </property>
+        <property>
+            <name>hive.metastore.client.connect.retry.delay</name>
+            <value>5</value>
+        </property>
+        <property>
+            <name>hive.metastore.client.connect.retry.delay.max</name>
+            <value>60</value>
+        </property>
+        <property>
+            <name>hive.metastore.client.connect.retry.attempts</name>
+            <value>24</value>
+        </property>
+        <property>
+            <name>hive.metastore.client.socket.timeout</name>
+            <value>1800</value>
+        </property>
+        <property>
+            <name>hive.metastore.client.socket.lifetime</name>
+            <value>0</value>
+        </property>
+        <property>
+            <name>hive.metastore.schema.verification</name>
+            <value>false</value>
+        </property>
+        <property>
+            <name>hive.metastore.warehouse.dir</name>
+            <value>hdfs://namenode:9000/user/hive/warehouse</value>
+        </property>
+        <property>
+            <name>hive.exec.scratchdir</name>
+            <value>/opt/hive/tmp</value>
+        </property>
+        <property>
+            <name>hive.exec.local.scratchdir</name>
+            <value>/opt/hive/tmp</value>
+        </property>
+        <property>
+            <name>hive.metastore.event.db.notification.api.auth</name>
+            <value>false</value>
+        </property>
+        <property>
+            <name>hive.server2.enable.doAs</name>
+            <value>false</value>
+        </property>
+        <property>
+            <name>hive.server2.thrift.port</name>
+            <value>10000</value>
+        </property>
+        <property>
+            <name>hive.server2.thrift.bind.host</name>
+            <value>0.0.0.0</value>
+        </property>
+        <property>
+            <name>hive.server2.transport.mode</name>
+            <value>binary</value>
+        </property>
+        <property>
+            <name>hive.server2.authentication</name>
+            <value>NONE</value>
+        </property>
+        <property>
+            <name>hive.execution.engine</name>
+            <value>spark</value>
+        </property>
+        <property>
+            <name>spark.master</name>
+            <value>yarn</value>
+        </property>
+        <property>
+            <name>spark.eventLog.enabled</name>
+            <value>true</value>
+        </property>
+        <property>
+            <name>spark.eventLog.dir</name>
+            <value>hdfs://namenode:9000/spark-logs</value>
+        </property>
+        <property>
+            <name>fs.defaultFS</name>
+            <value>hdfs://namenode:9000</value>
+        </property>
+    </configuration>
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spark-config
+  namespace: bigdata-stack
+data:
+  spark-defaults.conf: |
+    spark.master                     spark://spark-master:7077
+    spark.submit.deployMode          client
+    spark.driver.memory              2g
+    spark.executor.memory            2g
+    spark.sql.catalogImplementation  hive
+    spark.sql.warehouse.dir          hdfs://namenode:9000/user/hive/warehouse
+    spark.hadoop.hive.metastore.uris  thrift://hive-metastore:9083
+    spark.hadoop.fs.defaultFS        hdfs://namenode:9000
+    spark.eventLog.enabled           true
+    spark.eventLog.dir               hdfs://namenode:9000/spark-logs
+    spark.history.fs.logDirectory    hdfs://namenode:9000/spark-logs
+    spark.history.ui.port            18080
+    spark.history.ui.bindAddress     0.0.0.0
+    spark.pyspark.python             python3
+    spark.pyspark.driver.python      python3
+    spark.serializer                 org.apache.spark.serializer.KryoSerializer
+    spark.driver.bindAddress         0.0.0.0
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bigdata-env
+  namespace: bigdata-stack
+data:
+  HADOOP_HOME: "/opt/hadoop"
+  HIVE_HOME: "/opt/hive"
+  SPARK_HOME: "/opt/spark"
+  HADOOP_CONF_DIR: "/opt/hadoop/etc/hadoop"
+  HIVE_CONF_DIR: "/opt/hive/conf"
+  SPARK_CONF_DIR: "/opt/spark/conf"
+  HADOOP_VERSION: "3.3.6"
+  HIVE_VERSION: "3.1.3"
+  SPARK_VERSION: "3.5.8"
+  HIVE_USER: "hive"
+  NAMENODE_HOST: "namenode"
+  HIVE_METASTORE_HOST: "hive-metastore"
+  SPARK_MASTER_HOST: "spark-master"
+  SPARK_MASTER: "spark://spark-master:7077"
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "metastore"
+  WAIT_RETRIES: "60"
+  NAMENODE_RPC_PORT_CONTAINER: "9000"
+  DATANODE_PORT_CONTAINER: "9864"
+  RESOURCEMANAGER_PORT_CONTAINER: "8088"
+  NODEMANAGER_PORT_CONTAINER: "8042"
+  HIVE_METASTORE_PORT_CONTAINER: "9083"
+  HIVESERVER2_PORT_CONTAINER: "10000"
+  SPARK_MASTER_PORT_CONTAINER: "7077"
+  SPARK_MASTER_WEB_PORT_CONTAINER: "8080"
+  SPARK_WORKER_PORT_CONTAINER: "8081"
+  SPARK_HISTORY_PORT_CONTAINER: "18080"
+

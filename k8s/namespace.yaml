@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bigdata-stack
+  labels:
+    name: bigdata-stack
+    app: bigdata-stack
+
+

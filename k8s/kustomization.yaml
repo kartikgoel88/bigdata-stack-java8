@@ -1,0 +1,25 @@
+# Kustomization file for easier management
+# Usage: kubectl apply -k k8s/
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: bigdata-stack
+
+resources:
+  - namespace.yaml
+  - configmaps.yaml
+  - secrets.yaml
+  - persistent-volumes.yaml
+  - postgres.yaml
+  - hadoop.yaml
+  - hive.yaml
+  - spark.yaml
+  # Uncomment to enable ingress
+  # - ingress.yaml
+
+commonLabels:
+  app: bigdata-stack
+  managed-by: kustomize
+
+

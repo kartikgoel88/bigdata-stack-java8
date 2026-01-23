@@ -1,0 +1,189 @@
+# Hive Metastore Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hive-metastore
+  namespace: bigdata-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hive-metastore
+  template:
+    metadata:
+      labels:
+        app: hive-metastore
+    spec:
+      containers:
+      - name: hive-metastore
+        image: bigdata-runtime:hadoop
+        command: ["/bin/bash", "/scripts/entrypoint.sh", "metastore"]
+        ports:
+        - containerPort: 9083
+          name: metastore
+        envFrom:
+        - configMapRef:
+            name: bigdata-env
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: POSTGRES_DB
+        volumeMounts:
+        - name: hadoop-config
+          mountPath: /opt/hadoop/etc/hadoop
+        - name: hive-config
+          mountPath: /opt/hive/conf
+        - name: hive-logs
+          mountPath: /opt/hive/logs
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - nc -z localhost 9083
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 10
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - nc -z localhost 9083
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+      volumes:
+      - name: hadoop-config
+        configMap:
+          name: hadoop-config
+      - name: hive-config
+        configMap:
+          name: hive-config
+      - name: hive-logs
+        emptyDir: {}
+---
+# HiveServer2 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hive-server
+  namespace: bigdata-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hive-server
+  template:
+    metadata:
+      labels:
+        app: hive-server
+    spec:
+      containers:
+      - name: hive-server
+        image: bigdata-runtime:hadoop
+        command: ["/bin/bash", "/scripts/entrypoint.sh", "hiveserver2"]
+        ports:
+        - containerPort: 10000
+          name: thrift
+        envFrom:
+        - configMapRef:
+            name: bigdata-env
+        env:
+        - name: HIVE_METASTORE_HOST
+          value: "hive-metastore"
+        - name: HIVE_METASTORE_PORT
+          value: "9083"
+        volumeMounts:
+        - name: hadoop-config
+          mountPath: /opt/hadoop/etc/hadoop
+        - name: hive-config
+          mountPath: /opt/hive/conf
+        - name: hive-logs
+          mountPath: /opt/hive/logs
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - nc -z localhost 10000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 10
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - nc -z localhost 10000
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+      volumes:
+      - name: hadoop-config
+        configMap:
+          name: hadoop-config
+      - name: hive-config
+        configMap:
+          name: hive-config
+      - name: hive-logs
+        emptyDir: {}
+---
+# Services for Hive
+apiVersion: v1
+kind: Service
+metadata:
+  name: hive-metastore
+  namespace: bigdata-stack
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9083
+    targetPort: 9083
+    name: metastore
+  selector:
+    app: hive-metastore
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hive-server
+  namespace: bigdata-stack
+spec:
+  type: ClusterIP
+  ports:
+  - port: 10000
+    targetPort: 10000
+    name: thrift
+  selector:
+    app: hive-server
+
+

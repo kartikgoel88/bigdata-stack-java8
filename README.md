@@ -30,12 +30,23 @@ This project provides a containerized big data stack with the following componen
 
 ## Prerequisites
 
+### For Docker Compose:
 - Docker (version 20.10 or higher)
 - Docker Compose (version 1.29 or higher)
 - At least 4GB of available RAM
 - At least 10GB of free disk space
 
-## Quick Start
+### For Kubernetes:
+- Kubernetes cluster (minikube, kind, GKE, EKS, AKS, etc.)
+- kubectl configured to access your cluster
+- At least 8GB of available RAM (for the entire cluster)
+- At least 100GB of free disk space (for persistent volumes)
+
+## Deployment Options
+
+### Option 1: Docker Compose (Recommended for Development)
+
+Quick Start:
 
 1. **Clone or navigate to the project directory:**
    ```bash
@@ -241,11 +252,64 @@ This structure allows for:
 - Reusability of the base image
 - Easier maintenance and updates
 
+## Kubernetes Deployment
+
+This stack is also available as Kubernetes manifests for production deployments.
+
+### Quick Start with Kubernetes
+
+1. **Build Docker images** (if not already built):
+   ```bash
+   docker build -f Dockerfile.base -t bigdata-stack-base:latest .
+   docker build -f Dockerfile.hadoop-spark-base -t bigdata-runtime:hadoop .
+   ```
+
+2. **Make images available to your Kubernetes cluster:**
+   ```bash
+   # For minikube
+   minikube image load bigdata-runtime:hadoop
+   
+   # For kind
+   kind load docker-image bigdata-runtime:hadoop
+   
+   # For remote clusters, push to a registry and update image references
+   ```
+
+3. **Deploy to Kubernetes:**
+   ```bash
+   cd k8s
+   ./deploy.sh
+   ```
+
+4. **Access services via port-forwarding:**
+   ```bash
+   kubectl port-forward -n bigdata-stack svc/namenode 9870:9870
+   kubectl port-forward -n bigdata-stack svc/resourcemanager 8088:8088
+   kubectl port-forward -n bigdata-stack svc/spark-master 8080:8080
+   ```
+
+### Kubernetes Benefits
+
+Running on Kubernetes provides:
+- ✅ **High Availability** - Automatic pod restarts and self-healing
+- ✅ **Horizontal Scaling** - Scale DataNodes, NodeManagers, Spark Workers independently
+- ✅ **Resource Management** - CPU and memory limits with QoS guarantees
+- ✅ **Persistent Storage** - Data survives pod restarts and migrations
+- ✅ **Service Discovery** - Built-in DNS for service communication
+- ✅ **Rolling Updates** - Zero-downtime deployments
+- ✅ **Multi-Environment** - Isolated namespaces for dev/staging/prod
+- ✅ **Cloud Portability** - Run on any Kubernetes cluster (GKE, EKS, AKS, on-prem)
+
+See [KUBERNETES-BENEFITS.md](KUBERNETES-BENEFITS.md) for detailed benefits and comparison.
+
+For detailed Kubernetes deployment instructions, see [k8s/README.md](k8s/README.md).
+
 ## Versions
 
 - **Base Image**: OpenJDK 8
-- **Hadoop**: 3.3.4
+- **Hadoop**: 3.3.6
 - **Hive**: 3.1.3
+- **Spark**: 3.5.8
 - **PostgreSQL**: 13
 
 ## License
