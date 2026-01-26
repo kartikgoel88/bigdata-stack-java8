@@ -111,3 +111,4 @@ print_info "To delete everything: kubectl delete namespace bigdata-stack"
 echo ""
 
 
+

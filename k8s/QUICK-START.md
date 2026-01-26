@@ -212,3 +212,4 @@ kubectl delete -f k8s/postgres.yaml
 - Implement backup strategies for persistent volumes
 
 
+
